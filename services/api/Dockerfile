@@ -3,6 +3,6 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev
 COPY . .
-ENV PORT=8080
-EXPOSE 8080
+ENV PORT=8083
+EXPOSE 8083
 CMD ["node", "src/server.js"]

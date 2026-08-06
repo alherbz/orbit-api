@@ -7,4 +7,4 @@ Task API for the Orbit demo project. Fastify + Postgres.
 - `POST /tasks` — create a task `{ title, priority }`
 
 Reads `DATABASE_URL` (Postgres). Without it, serves an in-memory store so the
-service is always runnable. Listens on `PORT` (default `8080`).
+service is always runnable. Listens on `PORT` (default `8083`) on `0.0.0.0`.

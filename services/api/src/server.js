@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import pg from 'pg';
 
-const PORT = Number(process.env.PORT || 8080);
+const PORT = Number(process.env.PORT || 8083);
 const DATABASE_URL = process.env.DATABASE_URL;
 
 const app = Fastify({ logger: true });
