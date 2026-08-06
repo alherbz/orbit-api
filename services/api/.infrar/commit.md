@@ -4,27 +4,25 @@ id: 15862494-86f1-4d79-8a14-3c7bda3fba4c
 name: orbit-api
 node: services/api
 branch: develop
-previous_commit: a47d1cbb432eed55baaa88d1f32f929ab109d493
+previous_commit: c24c4d17fcf547f6f532c2386926343dfbc71ce9
 ---
 
 ## What changed
 
-- `Dockerfile`: the base image is now `node:20.99.99-alpine` (previously
-  `node:20-alpine`). Nothing else in the image recipe changed: same
-  `WORKDIR /app`, same `npm install --omit=dev`, same `ENV PORT=8083`,
-  `EXPOSE 8083` and `CMD ["node", "src/server.js"]`.
-- `.infrar/build.yaml` needs no change: it references the Dockerfile by path
-  (`dockerfile: Dockerfile`) and does not declare a base image, and the serving
-  port (8083) and healthcheck (`GET /health`) are unaffected.
+- `Dockerfile`: the base image is back to `node:20-alpine` (it was
+  `node:20.99.99-alpine`). Only the `FROM` line changed; the rest of the image
+  recipe is identical: `WORKDIR /app`, `COPY package.json ./`,
+  `RUN npm install --omit=dev`, `COPY . .`, `ENV PORT=8083`, `EXPOSE 8083`,
+  `CMD ["node", "src/server.js"]`.
+- `.infrar/build.yaml`: unchanged. It references the Dockerfile by path
+  (`dockerfile: Dockerfile`) and does not declare a base image, so reverting the
+  `FROM` line does not affect the build spec. The serving port (8083), the
+  healthcheck (`GET /health` on 8083) and the declared env vars stay valid.
 
 ## Why
 
-Requested pin to an explicit base image tag instead of the floating `20-alpine`
-tag, so the runtime version is fixed by the Dockerfile.
-
-Note: the `node:20.99.99-alpine` tag is not published on Docker Hub (the Node 20
-line stops at 20.20.x and is end-of-life), so the image build will fail while
-resolving the `FROM` instruction. The tag was applied as explicitly requested;
-changing the first line of the Dockerfile to a published tag (for example
-`node:20.20-alpine` or `node:22-alpine`) is all that is needed to make the build
-resolve again.
+The previous pin to `node:20.99.99-alpine` referenced a tag that is not
+published on Docker Hub, so the image build failed on the very first
+instruction and the pod never started. Restoring the floating `node:20-alpine`
+tag makes the base image resolvable again, so the build can proceed to
+`npm install` and the service can serve on port 8083.
