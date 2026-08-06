@@ -4,12 +4,12 @@ id: 15862494-86f1-4d79-8a14-3c7bda3fba4c
 name: orbit-api
 node: services/api
 branch: develop
-previous_commit: 2942dad7006b44cf5f16cea0158e3e828b39ca8c
+previous_commit: 6de146fc9092a705094ee19a22073f8415da5d3d
 ---
 
 ## What changed
-- Added `services/api/package-lock.json`, generated from the existing `package.json` (fastify ^4.28.1, pg ^8.12.0) with `npm install --package-lock-only`.
-- Updated `services/api/Dockerfile`: the dependency step now copies both `package.json` and `package-lock.json` and runs `npm ci --omit=dev` instead of `npm install --omit=dev`.
+- `services/api/Dockerfile`: base image changed from `node:20-alpine` to `node:20.99.99-alpine`.
+- `services/api/.infrar/knowledge.md`: updated to reflect the new base image and to record that the tag does not exist on Docker Hub.
 
 ## Why
-The user asked to use `npm ci` in the orbit-api Dockerfile. `npm ci` requires a lockfile, which the repo did not have, so one was generated and committed. `npm ci` gives reproducible builds pinned to the lockfile and fails fast if the lockfile and `package.json` drift apart.
+The user explicitly asked to pin the base image to `node:20.99.99-alpine` and confirmed to apply it despite the warning. The tag was checked against the Docker Hub registry and returned 404, so the container image build is expected to fail until the tag is changed back to an existing one (e.g. `node:20-alpine`). No other run-time settings changed: the app still listens on port 8083 (already configured in the code, Dockerfile, and build.yaml), so `build.yaml` needed no update.
