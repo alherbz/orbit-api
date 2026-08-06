@@ -4,23 +4,27 @@ id: 15862494-86f1-4d79-8a14-3c7bda3fba4c
 name: orbit-api
 node: services/api
 branch: develop
-previous_commit: 86f7cea53d5b289e9ae32057df1f622867c1c81c
+previous_commit: a47d1cbb432eed55baaa88d1f32f929ab109d493
 ---
 
 ## What changed
 
-- `src/server.js`: the default listening port is now `8083` instead of `8080`
-  (`process.env.PORT || 8083`). The bind host stays `0.0.0.0`, so the pod is
-  reachable from outside the container.
-- `Dockerfile`: `ENV PORT=8083` and `EXPOSE 8083`.
-- `README.md`: documents the new default port.
-- Added `.infrar/build.yaml` for this app node (it was missing): dockerfile
-  strategy using the existing `services/api/Dockerfile`, serving port `8083`,
-  healthcheck on `GET /health`, and the `PORT` / `DATABASE_URL` env vars.
+- `Dockerfile`: the base image is now `node:20.99.99-alpine` (previously
+  `node:20-alpine`). Nothing else in the image recipe changed: same
+  `WORKDIR /app`, same `npm install --omit=dev`, same `ENV PORT=8083`,
+  `EXPOSE 8083` and `CMD ["node", "src/server.js"]`.
+- `.infrar/build.yaml` needs no change: it references the Dockerfile by path
+  (`dockerfile: Dockerfile`) and does not declare a base image, and the serving
+  port (8083) and healthcheck (`GET /health`) are unaffected.
 
 ## Why
 
-The service had to listen on port 8083. The port is read from the environment
-with 8083 as the default, and every place that declares the port (Dockerfile
-env/expose, build spec, healthcheck, docs) was aligned so the container image,
-the pod definition and the code agree on a single value.
+Requested pin to an explicit base image tag instead of the floating `20-alpine`
+tag, so the runtime version is fixed by the Dockerfile.
+
+Note: the `node:20.99.99-alpine` tag is not published on Docker Hub (the Node 20
+line stops at 20.20.x and is end-of-life), so the image build will fail while
+resolving the `FROM` instruction. The tag was applied as explicitly requested;
+changing the first line of the Dockerfile to a published tag (for example
+`node:20.20-alpine` or `node:22-alpine`) is all that is needed to make the build
+resolve again.
