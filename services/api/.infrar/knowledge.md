@@ -1,22 +1,14 @@
----
-schema_version: 1
-id: 15862494-86f1-4d79-8a14-3c7bda3fba4c
-name: orbit-api
-node: services/api
-category: app
----
-
 ## Purpose
-HTTP API service ('orbit-api') that provides the backend application entrypoint for the Orbit system. Packaged as a containerized Node.js service.
+HTTP API service ('orbit-api') that provides the backend application entrypoint for the Orbit system: a small task-management API. Packaged as a containerized Node.js service.
 
 ## Structure
-Node.js application rooted at services/api. Entry point is src/server.js. package.json defines dependencies and run scripts. Dockerfile plus .dockerignore support container image builds. README.md documents service-level usage.
+Node.js (ESM) application rooted at services/api. Entry point is src/server.js, a single-file Fastify server. package.json declares dependencies (fastify, pg) and the `start` script; package-lock.json pins the full dependency tree. Dockerfile (node:20-alpine) plus .dockerignore support container image builds.
 
 ## Behavior
-src/server.js bootstraps and runs the HTTP server process. Runtime behavior is driven by the npm scripts declared in package.json; the container image invokes the same entrypoint. Exact routes, ports, and configuration are defined within server.js and environment settings.
+src/server.js starts a Fastify server on 0.0.0.0 at the port from the PORT env var (default 8083). Routes: GET /health (status check), GET /tasks and POST /tasks (task list backed by Postgres when DATABASE_URL is set, otherwise an in-memory fallback so the app runs without a database). On startup with a database it creates the `tasks` table if missing and seeds two sample rows.
 
 ## Dependencies
-Node.js runtime; npm packages declared in package.json (e.g., an HTTP/web framework). Docker for image builds. .dockerignore excludes build artifacts and local files from the build context.
+Node.js >= 20; npm packages fastify and pg, resolved via package-lock.json. Optional Postgres via the DATABASE_URL env var (wired from the db node in preview). Docker for image builds: the Dockerfile copies package.json and package-lock.json, runs `npm ci --omit=dev` for reproducible installs, sets PORT=8083, and starts `node src/server.js`.
 
 ## Notes
-Single-file server implementation (src/server.js) indicates a minimal or early-stage API. Consult README.md and package.json scripts for build, run, and start commands.
+The image build requires package-lock.json to be present and in sync with package.json (`npm ci` fails otherwise); update the lockfile whenever dependencies change. The in-memory task store is per-process and resets on restart — it exists only as a no-database fallback.
