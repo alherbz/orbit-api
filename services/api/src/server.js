@@ -40,6 +40,63 @@ async function initDb() {
 
 app.get('/health', async () => ({ status: 'ok' }));
 
+// Quiz broadcast: clients subscribe over SSE (works from a plain browser
+// EventSource, no extra dependency) and POST /quiz/broadcast fans a quiz
+// out to every open connection. Connections are per-process, like `memory`.
+const quizClients = new Set();
+
+const QUIZZES = [
+  {
+    question: 'Which planet has the most moons?',
+    options: ['Earth', 'Mars', 'Saturn', 'Venus'],
+    answer: 'Saturn',
+  },
+  {
+    question: 'What does HTTP status 418 mean?',
+    options: ['Not Found', "I'm a teapot", 'Gone', 'Too Early'],
+    answer: "I'm a teapot",
+  },
+  {
+    question: 'Which of these is NOT a JavaScript primitive?',
+    options: ['symbol', 'bigint', 'array', 'undefined'],
+    answer: 'array',
+  },
+];
+
+app.get('/quiz/stream', (req, reply) => {
+  reply.hijack();
+  const res = reply.raw;
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+  });
+  res.write(': connected\n\n');
+  quizClients.add(res);
+  const heartbeat = setInterval(() => res.write(': ping\n\n'), 25000);
+  req.raw.on('close', () => {
+    clearInterval(heartbeat);
+    quizClients.delete(res);
+  });
+});
+
+app.post('/quiz/broadcast', async (req, reply) => {
+  const { question, options, answer } = req.body ?? {};
+  let quiz;
+  if (question) {
+    if (!Array.isArray(options) || options.length < 2) {
+      reply.code(400);
+      return { error: 'options must be an array of at least 2 choices' };
+    }
+    quiz = { question, options, answer: answer ?? null };
+  } else {
+    quiz = QUIZZES[Math.floor(Math.random() * QUIZZES.length)];
+  }
+  const event = `event: quiz\ndata: ${JSON.stringify(quiz)}\n\n`;
+  for (const client of quizClients) client.write(event);
+  return { delivered: quizClients.size, quiz };
+});
+
 app.get('/tasks', async () => {
   if (pool) {
     const { rows } = await pool.query(

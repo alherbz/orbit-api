@@ -1,15 +1,19 @@
 ---
 schema_version: 1
-id: 15862494-86f1-4d79-8a14-3c7bda3fba4c
-name: orbit-api
+id: 8ed247c7-af49-4d49-a5da-6160ce873529
+name: api
 node: services/api
 branch: develop
-previous_commit: c5d0c4688ad230e15105185bdadc2e4a494557ee
+previous_commit: 568f32dfb6ef50ba8c7be7900ae05239de734eab
 ---
 
 ## What changed
-- `services/api/.gitignore` (new): re-includes `package-lock.json` via a `!package-lock.json` negation (and keeps `node_modules/` ignored), overriding the repo-root `.gitignore` rule that excluded it. As a result, the existing `services/api/package-lock.json` is now committed.
-- `services/api/.infrar/knowledge.md`: updated to document why the lockfile must stay tracked.
+- `services/api/src/server.js`: added a quiz broadcast API on top of the existing Fastify server:
+  - `GET /quiz/stream` — Server-Sent Events endpoint; each connected client is tracked in an in-process set, kept alive with a 25s comment heartbeat, and removed when the connection closes.
+  - `POST /quiz/broadcast` — sends a quiz as an SSE `quiz` event to every connected client. Accepts an optional `{question, options, answer}` body (validating that `options` has at least 2 choices) and otherwise picks a random quiz from a small built-in list; responds with the quiz and the number of clients it was delivered to.
+- `services/api/.infrar/knowledge.md`: updated to document the new endpoints and the per-process nature of the SSE client set.
+
+The requested `GET /health` endpoint already existed and returns 200 — no change was needed for it.
 
 ## Why
-The image build failed with `lstat .../services/api/package-lock.json: no such file or directory`: the repo-root `.gitignore` lists `package-lock.json`, so the lockfile present in the working tree was never committed and was absent from the kaniko build context, breaking the Dockerfile's `COPY package.json package-lock.json ./` step. Re-including the lockfile makes it part of the repo so `npm ci --omit=dev` can run reproducibly. No code or Dockerfile change was needed — the app already listens on 0.0.0.0:8083, matching `build.yaml`.
+The user asked for an API that broadcasts a little quiz to every connected user. SSE was chosen over WebSockets because it needs no new dependency, works from a plain browser `EventSource`, and fits the existing single-file Fastify setup. No build.yaml change: the service still builds, starts, and listens exactly as before (port 8083, same command, no new dependencies).
