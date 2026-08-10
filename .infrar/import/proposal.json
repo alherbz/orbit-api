@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "name": "api",
+      "kind": "app",
+      "path": "services/api",
+      "entrypoint": "services/api",
+      "role": "backend",
+      "summary": "Fastify task API (Node 20) with Postgres via DATABASE_URL, in-memory fallback"
+    },
+    {
+      "name": "deploy",
+      "kind": "infra",
+      "path": "deploy",
+      "entrypoint": "deploy",
+      "role": "iac",
+      "summary": "Terraform root provisioning a managed Postgres instance for Orbit"
+    }
+  ],
+  "sharedFolders": [],
+  "repoWideOther": false,
+  "branches": [
+    { "name": "main", "classification": "permanent", "reason": "Default branch" },
+    { "name": "develop", "classification": "permanent", "reason": "Long-lived integration branch" }
+  ]
+}
