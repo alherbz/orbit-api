@@ -11,3 +11,7 @@ env:
     default: "8083"
   - name: DATABASE_URL
     secret: true
+  - name: MAIL_API_KEY
+    secret: true
+  - name: MAIL_FROM
+    default: "orbit@mail.infrar.io"

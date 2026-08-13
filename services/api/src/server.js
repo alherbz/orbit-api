@@ -3,6 +3,10 @@ import pg from 'pg';
 
 const PORT = Number(process.env.PORT || 8083);
 const DATABASE_URL = process.env.DATABASE_URL;
+// Mail is optional: the API must start and serve tasks without MAIL_API_KEY,
+// and /tasks/:id/share answers 503 until the key is configured.
+const MAIL_API_KEY = process.env.MAIL_API_KEY;
+const MAIL_FROM = process.env.MAIL_FROM || 'orbit@mail.infrar.io';
 
 const app = Fastify({ logger: true });
 
@@ -125,6 +129,85 @@ app.post('/tasks', async (req, reply) => {
   memory.push(task);
   reply.code(201);
   return task;
+});
+
+async function findTask(id) {
+  if (pool) {
+    const { rows } = await pool.query(
+      'SELECT id, title, priority, done FROM tasks WHERE id = $1',
+      [id],
+    );
+    return rows[0] ?? null;
+  }
+  return memory.find((t) => t.id === id) ?? null;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+app.post('/tasks/:id/share', async (req, reply) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    reply.code(400);
+    return { error: 'task id must be an integer' };
+  }
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+  if (!EMAIL_RE.test(email)) {
+    reply.code(400);
+    return { error: 'a valid recipient email address is required' };
+  }
+  if (!MAIL_API_KEY) {
+    reply.code(503);
+    return { error: 'email sending is not configured: set MAIL_API_KEY to enable sharing' };
+  }
+  const task = await findTask(id);
+  if (!task) {
+    reply.code(404);
+    return { error: `task ${id} not found` };
+  }
+
+  // Resend is reached over plain HTTPS — SMTP ports are blocked in preview.
+  let res;
+  try {
+    res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${MAIL_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: MAIL_FROM,
+        to: [email],
+        subject: `Orbit task shared: ${task.title}`,
+        text: [
+          'A task from the Orbit board was shared with you.',
+          '',
+          `Title:    ${task.title}`,
+          `Priority: ${task.priority}`,
+          `Status:   ${task.done ? 'done' : 'open'}`,
+        ].join('\n'),
+      }),
+    });
+  } catch (err) {
+    req.log.error({ err, taskId: id }, 'mail provider unreachable');
+    reply.code(502);
+    return { error: `mail provider unreachable: ${err.message}` };
+  }
+
+  const providerBody = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    req.log.error(
+      { taskId: id, providerStatus: res.status, providerBody },
+      'mail provider rejected the send',
+    );
+    reply.code(502);
+    return {
+      error: 'mail provider rejected the send',
+      providerStatus: res.status,
+      providerMessage: providerBody.message ?? providerBody.error ?? null,
+    };
+  }
+  req.log.info({ taskId: id, mailId: providerBody.id }, 'task shared by email');
+  return { ok: true, mailId: providerBody.id ?? null };
 });
 
 const start = async () => {
