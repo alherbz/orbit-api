@@ -42,7 +42,9 @@ async function initDb() {
   }
 }
 
-app.get('/health', async () => ({ status: 'ok' }));
+// Storage mode feeds the web header's status chip: "postgres" when the pool
+// is connected, "memory" when running on the in-memory fallback.
+app.get('/health', async () => ({ status: 'ok', storage: pool ? 'postgres' : 'memory' }));
 
 // Quiz broadcast: clients subscribe over SSE (works from a plain browser
 // EventSource, no extra dependency) and POST /quiz/broadcast fans a quiz
