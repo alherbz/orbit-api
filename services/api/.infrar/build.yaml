@@ -10,7 +10,7 @@ env:
   - name: PORT
     default: "8083"
   - name: DATABASE_URL
-    secret: true
+    from: deploy
   - name: MAIL_API_KEY
     secret: true
   - name: MAIL_FROM

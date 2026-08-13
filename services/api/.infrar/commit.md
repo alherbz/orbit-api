@@ -4,11 +4,11 @@ id: 0d8f6ec5-0116-46c7-93de-f9959f56f546
 name: api
 node: services/api
 branch: develop
-previous_commit: 4c4d0e303dc8886a5c65cc2f86e553ffcffb2c6a
+previous_commit: 08169baeb42581511ee33d5b87f7621171f63818
 ---
 
 ## What changed
-- Nothing in the code. This is a verification retry: the share-by-email endpoint (`POST /tasks/:id/share`) and its build.yaml env declarations are already committed in `4c4d0e3`.
+In `.infrar/build.yaml`, the `DATABASE_URL` env entry was changed from `secret: true` to `from: deploy`. The knowledge file's Dependencies section was updated to describe the new wiring. No application code was touched.
 
 ## Why
-The previous build failed with a repository-access error: the cluster could not clone the repo because the cloud SSH key was not registered with the git provider. The user has now added the key in Settings → Git, so the build only needs to be re-run — no code or build-spec fix is required.
+`DATABASE_URL` is not a per-preview secret: it is a graph-wired value produced by the database (deploy) node. Declaring it with `from: deploy` lets the preview inject the synthesized Postgres URL automatically, so the API uses Postgres in previews instead of silently falling back to the in-memory store.
