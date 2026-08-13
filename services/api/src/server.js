@@ -44,7 +44,12 @@ async function initDb() {
 
 // Storage mode feeds the web header's status chip: "postgres" when the pool
 // is connected, "memory" when running on the in-memory fallback.
-app.get('/health', async () => ({ status: 'ok', storage: pool ? 'postgres' : 'memory' }));
+const health = async () => ({ status: 'ok', storage: pool ? 'postgres' : 'memory' });
+
+// The pod's own healthcheck probes the container directly at /health (the path
+// declared in .infrar/build.yaml), bypassing the /api routing, so this route
+// stays unprefixed in addition to the /api/health one inside the plugin.
+app.get('/health', health);
 
 // Quiz broadcast: clients subscribe over SSE (works from a plain browser
 // EventSource, no extra dependency) and POST /quiz/broadcast fans a quiz
@@ -69,70 +74,6 @@ const QUIZZES = [
   },
 ];
 
-app.get('/quiz/stream', (req, reply) => {
-  reply.hijack();
-  const res = reply.raw;
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache, no-transform',
-    Connection: 'keep-alive',
-  });
-  res.write(': connected\n\n');
-  quizClients.add(res);
-  const heartbeat = setInterval(() => res.write(': ping\n\n'), 25000);
-  req.raw.on('close', () => {
-    clearInterval(heartbeat);
-    quizClients.delete(res);
-  });
-});
-
-app.post('/quiz/broadcast', async (req, reply) => {
-  const { question, options, answer } = req.body ?? {};
-  let quiz;
-  if (question) {
-    if (!Array.isArray(options) || options.length < 2) {
-      reply.code(400);
-      return { error: 'options must be an array of at least 2 choices' };
-    }
-    quiz = { question, options, answer: answer ?? null };
-  } else {
-    quiz = QUIZZES[Math.floor(Math.random() * QUIZZES.length)];
-  }
-  const event = `event: quiz\ndata: ${JSON.stringify(quiz)}\n\n`;
-  for (const client of quizClients) client.write(event);
-  return { delivered: quizClients.size, quiz };
-});
-
-app.get('/tasks', async () => {
-  if (pool) {
-    const { rows } = await pool.query(
-      'SELECT id, title, priority, done FROM tasks ORDER BY id',
-    );
-    return rows;
-  }
-  return memory;
-});
-
-app.post('/tasks', async (req, reply) => {
-  const { title, priority = 'medium' } = req.body ?? {};
-  if (!title) {
-    reply.code(400);
-    return { error: 'title is required' };
-  }
-  if (pool) {
-    const { rows } = await pool.query(
-      'INSERT INTO tasks (title, priority) VALUES ($1,$2) RETURNING id, title, priority, done',
-      [title, priority],
-    );
-    reply.code(201);
-    return rows[0];
-  }
-  const task = { id: nextId++, title, priority, done: false };
-  memory.push(task);
-  reply.code(201);
-  return task;
-});
-
 async function findTask(id) {
   if (pool) {
     const { rows } = await pool.query(
@@ -146,71 +87,144 @@ async function findTask(id) {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-app.post('/tasks/:id/share', async (req, reply) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) {
-    reply.code(400);
-    return { error: 'task id must be an integer' };
-  }
-  const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
-  if (!EMAIL_RE.test(email)) {
-    reply.code(400);
-    return { error: 'a valid recipient email address is required' };
-  }
-  if (!MAIL_API_KEY) {
-    reply.code(503);
-    return { error: 'email sending is not configured: set MAIL_API_KEY to enable sharing' };
-  }
-  const task = await findTask(id);
-  if (!task) {
-    reply.code(404);
-    return { error: `task ${id} not found` };
-  }
+// The preview routes /api/* from the web origin to this service without
+// stripping the prefix, so everything the frontend calls is served under /api
+// via this encapsulated plugin (registered with { prefix: '/api' } below).
+async function apiRoutes(api) {
+  api.get('/health', health);
 
-  // Resend is reached over plain HTTPS — SMTP ports are blocked in preview.
-  let res;
-  try {
-    res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${MAIL_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: MAIL_FROM,
-        to: [email],
-        subject: `Orbit task shared: ${task.title}`,
-        text: [
-          'A task from the Orbit board was shared with you.',
-          '',
-          `Title:    ${task.title}`,
-          `Priority: ${task.priority}`,
-          `Status:   ${task.done ? 'done' : 'open'}`,
-        ].join('\n'),
-      }),
+  api.get('/quiz/stream', (req, reply) => {
+    reply.hijack();
+    const res = reply.raw;
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
     });
-  } catch (err) {
-    req.log.error({ err, taskId: id }, 'mail provider unreachable');
-    reply.code(502);
-    return { error: `mail provider unreachable: ${err.message}` };
-  }
+    res.write(': connected\n\n');
+    quizClients.add(res);
+    const heartbeat = setInterval(() => res.write(': ping\n\n'), 25000);
+    req.raw.on('close', () => {
+      clearInterval(heartbeat);
+      quizClients.delete(res);
+    });
+  });
 
-  const providerBody = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    req.log.error(
-      { taskId: id, providerStatus: res.status, providerBody },
-      'mail provider rejected the send',
-    );
-    reply.code(502);
-    return {
-      error: 'mail provider rejected the send',
-      providerStatus: res.status,
-      providerMessage: providerBody.message ?? providerBody.error ?? null,
-    };
-  }
-  req.log.info({ taskId: id, mailId: providerBody.id }, 'task shared by email');
-  return { ok: true, mailId: providerBody.id ?? null };
-});
+  api.post('/quiz/broadcast', async (req, reply) => {
+    const { question, options, answer } = req.body ?? {};
+    let quiz;
+    if (question) {
+      if (!Array.isArray(options) || options.length < 2) {
+        reply.code(400);
+        return { error: 'options must be an array of at least 2 choices' };
+      }
+      quiz = { question, options, answer: answer ?? null };
+    } else {
+      quiz = QUIZZES[Math.floor(Math.random() * QUIZZES.length)];
+    }
+    const event = `event: quiz\ndata: ${JSON.stringify(quiz)}\n\n`;
+    for (const client of quizClients) client.write(event);
+    return { delivered: quizClients.size, quiz };
+  });
+
+  api.get('/tasks', async () => {
+    if (pool) {
+      const { rows } = await pool.query(
+        'SELECT id, title, priority, done FROM tasks ORDER BY id',
+      );
+      return rows;
+    }
+    return memory;
+  });
+
+  api.post('/tasks', async (req, reply) => {
+    const { title, priority = 'medium' } = req.body ?? {};
+    if (!title) {
+      reply.code(400);
+      return { error: 'title is required' };
+    }
+    if (pool) {
+      const { rows } = await pool.query(
+        'INSERT INTO tasks (title, priority) VALUES ($1,$2) RETURNING id, title, priority, done',
+        [title, priority],
+      );
+      reply.code(201);
+      return rows[0];
+    }
+    const task = { id: nextId++, title, priority, done: false };
+    memory.push(task);
+    reply.code(201);
+    return task;
+  });
+
+  api.post('/tasks/:id/share', async (req, reply) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      reply.code(400);
+      return { error: 'task id must be an integer' };
+    }
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    if (!EMAIL_RE.test(email)) {
+      reply.code(400);
+      return { error: 'a valid recipient email address is required' };
+    }
+    if (!MAIL_API_KEY) {
+      reply.code(503);
+      return { error: 'email sending is not configured: set MAIL_API_KEY to enable sharing' };
+    }
+    const task = await findTask(id);
+    if (!task) {
+      reply.code(404);
+      return { error: `task ${id} not found` };
+    }
+
+    // Resend is reached over plain HTTPS — SMTP ports are blocked in preview.
+    let res;
+    try {
+      res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${MAIL_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: MAIL_FROM,
+          to: [email],
+          subject: `Orbit task shared: ${task.title}`,
+          text: [
+            'A task from the Orbit board was shared with you.',
+            '',
+            `Title:    ${task.title}`,
+            `Priority: ${task.priority}`,
+            `Status:   ${task.done ? 'done' : 'open'}`,
+          ].join('\n'),
+        }),
+      });
+    } catch (err) {
+      req.log.error({ err, taskId: id }, 'mail provider unreachable');
+      reply.code(502);
+      return { error: `mail provider unreachable: ${err.message}` };
+    }
+
+    const providerBody = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      req.log.error(
+        { taskId: id, providerStatus: res.status, providerBody },
+        'mail provider rejected the send',
+      );
+      reply.code(502);
+      return {
+        error: 'mail provider rejected the send',
+        providerStatus: res.status,
+        providerMessage: providerBody.message ?? providerBody.error ?? null,
+      };
+    }
+    req.log.info({ taskId: id, mailId: providerBody.id }, 'task shared by email');
+    return { ok: true, mailId: providerBody.id ?? null };
+  });
+}
+
+app.register(apiRoutes, { prefix: '/api' });
 
 const start = async () => {
   try {
