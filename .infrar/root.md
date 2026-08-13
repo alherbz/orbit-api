@@ -7,7 +7,7 @@ parent_branch: null
 
 | Id | Name | Entrypoint | Category |
 |---|---|---|---|
-| dd9fac04-738f-4d2d-9b9a-e3a42a399495 | deploy | deploy | iac |
-| 8ed247c7-af49-4d49-a5da-6160ce873529 | api | services/api | app |
+| 7fd28ec1-739d-4349-9b29-93cb2dd4d081 | deploy | deploy | iac |
+| 0d8f6ec5-0116-46c7-93de-f9959f56f546 | api | services/api | app |
 
 ## Metadata

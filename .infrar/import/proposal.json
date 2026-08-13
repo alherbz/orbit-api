@@ -7,7 +7,7 @@
       "path": "services/api",
       "entrypoint": "services/api",
       "role": "backend",
-      "summary": "Fastify task API (Node 20) with Postgres via DATABASE_URL, in-memory fallback"
+      "summary": "Fastify task API (Node 20) reading DATABASE_URL, containerized via Dockerfile"
     },
     {
       "name": "deploy",
@@ -15,13 +15,21 @@
       "path": "deploy",
       "entrypoint": "deploy",
       "role": "iac",
-      "summary": "Terraform root provisioning a managed Postgres instance for Orbit"
+      "summary": "Terraform root (AWS provider) provisioning managed Postgres 16 for the Orbit API"
     }
   ],
   "sharedFolders": [],
   "repoWideOther": false,
   "branches": [
-    { "name": "main", "classification": "permanent", "reason": "Default branch" },
-    { "name": "develop", "classification": "permanent", "reason": "Long-lived integration branch" }
+    {
+      "name": "main",
+      "classification": "full",
+      "reason": "Default branch; baseline for full analysis"
+    },
+    {
+      "name": "develop",
+      "classification": "incremental",
+      "reason": "Long-lived integration branch; analyze as a delta against main"
+    }
   ]
 }
