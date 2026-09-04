@@ -6,33 +6,18 @@ node: services/api
 category: app
 ---
 ## Purpose
-`orbit-api` is the task API for the Orbit demo project: a small HTTP service exposing a health check and task list/create endpoints. It is built with Fastify, optionally backed by Postgres, and packaged as a container image for deployment.
+HTTP API service ('orbit-api') that provides the backend application entrypoint for the Orbit system: a small task-management API with a real-time quiz broadcast channel and task sharing by email. Packaged as a containerized Node.js service.
 
 ## Structure
-Single-file Node.js application (ES modules, Node >= 20):
-- `src/server.js` — the entire service: Fastify setup, Postgres pool initialization, route handlers, and startup logic.
-- `package.json` — declares the two runtime dependencies (`fastify` ^4.28, `pg` ^8.12) and the `start` script (`node src/server.js`).
-- `Dockerfile` — `node:20-alpine` base; installs production dependencies from `package.json`, copies the source, sets `PORT=8080`, exposes 8080, runs `node src/server.js`.
-- `README.md` — endpoint and configuration summary; `.dockerignore` trims the Docker build context.
+Node.js (ESM) application rooted at services/api. Entry point is src/server.js, a single-file Fastify server. package.json declares dependencies (fastify, pg) and the `start` script; package-lock.json pins the full dependency tree. Dockerfile (node:20-alpine) plus .dockerignore support container image builds.
 
 ## Behavior
-On startup, `initDb()` checks `DATABASE_URL`. If set, it creates a `pg.Pool`, ensures a `tasks` table exists (`id SERIAL PRIMARY KEY`, `title TEXT NOT NULL`, `priority TEXT` default `'medium'`, `done BOOLEAN` default `false`), and seeds two demo rows if the table is empty. If unset, it logs a warning and serves from an in-memory array pre-populated with the same two demo tasks, so the service never hard-fails without a database.
+src/server.js starts a Fastify server on 0.0.0.0 at the port from the PORT env var (default 8083). All application routes are served under the /api base path via an encapsulated Fastify plugin registered with { prefix: '/api' } — the preview routes /api/* from the web origin to this service without stripping the prefix. Routes: GET /api/health (status check that also reports the storage mode — { "status": "ok", "storage": "postgres" } when the Postgres pool is connected, "memory" when running on the in-memory fallback; the orbit-web header chip reads this), GET /api/tasks and POST /api/tasks (task list backed by Postgres when DATABASE_URL is set, otherwise an in-memory fallback so the app runs without a database), POST /api/tasks/:id/share (emails a task to a recipient), GET /api/quiz/stream (Server-Sent Events subscription — the connection is hijacked from Fastify and kept alive with a comment heartbeat every 25s), and POST /api/quiz/broadcast (sends a quiz as an SSE `quiz` event to every connected /api/quiz/stream client; accepts an optional {question, options, answer} body and falls back to a random built-in quiz, returning the delivered-client count). An additional unprefixed GET /health (same handler as /api/health) is kept because the pod's own healthcheck probes the container directly at the path declared in .infrar/build.yaml (/health), not through the /api routing. On startup with a database it creates the `tasks` table if missing and seeds two sample rows.
 
-Routes:
-- `GET /health` — liveness probe, returns `{ status: 'ok' }`.
-- `GET /tasks` — returns all tasks ordered by id (from Postgres when a pool exists, otherwise from memory).
-- `POST /tasks` — creates a task from `{ title, priority }`; `priority` defaults to `'medium'`; a missing `title` returns 400 with `{ error: 'title is required' }`; success returns 201 with the created task (`done` starts false).
-
-The server listens on `0.0.0.0` at `PORT` (default 8080) with Fastify's built-in logger enabled. Any startup failure (DB init or listen) is logged and the process exits with code 1.
+POST /api/tasks/:id/share accepts { "email": "..." }, validates the recipient (400 on a malformed address), returns 503 when MAIL_API_KEY is not configured (the server still starts without it), looks the task up via findTask(id) in Postgres or the in-memory store (404 when missing), and sends a plain-text email containing the task title, priority and status through the Resend HTTPS API (POST https://api.resend.com/emails with an Authorization: Bearer header, using Node 20's global fetch — no SMTP, which is blocked in preview). The sender comes from MAIL_FROM (default orbit@mail.infrar.io). Provider failures return 502 with the provider's HTTP status and message in the response body, and success/failure are logged with provider details for diagnosis from the preview logs.
 
 ## Dependencies
-- Runtime: Node.js >= 20; npm packages `fastify` (HTTP framework) and `pg` (Postgres client).
-- Environment variables: `DATABASE_URL` (optional Postgres connection string) and `PORT` (optional, default 8080).
-- External service: a Postgres database when `DATABASE_URL` is provided. In this repo that corresponds to the RDS Postgres declared in the `deploy` iac node; in an Infrar Application Preview the connection is wired from the preview's synthesized `db` node instead.
-- Docker for image builds (no build/transpile step — plain JS, dependencies installed with `npm install --omit=dev`).
+Node.js >= 20 (global fetch is required for the Resend call); npm packages fastify and pg, resolved via package-lock.json. Optional Postgres via the DATABASE_URL env var, declared in .infrar/build.yaml with `from: orbit` so the preview injects the synthesized Postgres URL from the orbit database node (the Postgres extracted from the Terraform). Optional mail configuration via MAIL_API_KEY (secret, Resend API key) and MAIL_FROM; both are declared in .infrar/build.yaml. Docker for image builds: the Dockerfile copies package.json and package-lock.json, runs `npm ci --omit=dev` for reproducible installs, sets PORT=8083, and starts `node src/server.js`.
 
 ## Notes
-- The in-memory fallback is intentionally non-persistent and single-instance; tasks created without `DATABASE_URL` are lost on restart and not shared across replicas.
-- Schema management is limited to `CREATE TABLE IF NOT EXISTS` at startup; there is no migration tooling.
-- There is no authentication, no input validation beyond the `title` presence check, no update/delete endpoints, and no test suite — consistent with a minimal demo service.
-- No lockfile is committed and the Dockerfile copies only `package.json` before `npm install`, so dependency versions are resolved at image build time (non-reproducible builds).
+The image build requires package-lock.json to be present and in sync with package.json (`npm ci` fails otherwise); update the lockfile whenever dependencies change. The repo-root .gitignore excludes package-lock.json, so services/api/.gitignore re-includes it with a `!package-lock.json` negation — do not remove that line, or the lockfile drops out of the build context and the Dockerfile COPY step fails. The base image was briefly pinned to the nonexistent tag `node:20.99.99-alpine` (which broke image builds) and has been reverted to `node:20-alpine`. The in-memory task store and the set of connected SSE quiz clients are per-process and reset on restart — broadcasts only reach clients connected to the same pod instance. Email sending is deliberately HTTPS-only (Resend REST API); do not introduce nodemailer or any SMTP client, as SMTP ports are blocked in the preview environment.

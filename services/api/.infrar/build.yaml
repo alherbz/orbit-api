@@ -1,0 +1,17 @@
+schema_version: 1
+strategy: dockerfile
+dockerfile: Dockerfile
+run:
+  port: 8083
+healthcheck:
+  path: /health
+  port: 8083
+env:
+  - name: PORT
+    default: "8083"
+  - name: DATABASE_URL
+    from: orbit
+  - name: MAIL_API_KEY
+    secret: true
+  - name: MAIL_FROM
+    default: "orbit@mail.infrar.io"
