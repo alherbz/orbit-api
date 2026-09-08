@@ -1,6 +1,5 @@
 ---
 schema_version: 1
-parent_branch: null
 ---
 
 ## Nodes
