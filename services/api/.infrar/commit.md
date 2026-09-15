@@ -3,33 +3,42 @@ schema_version: 1
 id: 0d8f6ec5-0116-46c7-93de-f9959f56f546
 name: api
 node: services/api
-branch: develop
-previous_commit: c024dec79c8b52c513c4d252f13c5b04fec12c0e
+branch: test/prv-p1-env
+previous_commit: 62141a8d72553d2e205e256f04202c72a0720b28
 ---
 
 ## What changed
 
-- `src/server.js`: all application routes are now registered inside an
-  encapsulated Fastify plugin mounted with `{ prefix: '/api' }`, so the
-  service serves `GET /api/health`, `GET/POST /api/tasks`,
-  `POST /api/tasks/:id/share`, `GET /api/quiz/stream` and
-  `POST /api/quiz/broadcast`. Route handlers, validation, storage and
-  mail logic are unchanged — only where the routes are mounted moved.
-- A bare `GET /health` (same handler as `/api/health`) remains at the
-  root for the pod's own container healthcheck, which probes the path
-  declared in `.infrar/build.yaml` (`/health`) directly, not through the
-  preview router.
-- `.infrar/knowledge.md`: Behavior section rewritten to document the
-  `/api` base path and the extra unprefixed health route.
+- `.infrar/build.yaml`: new `requires.cache` entry — product `redis`,
+  `version: ">=6"`, projecting `REDIS_URL: url` into the pod. No
+  tenancy is stated, so the product default applies.
+- `src/server.js`: reads `REDIS_URL` and adds a small cache layer —
+  `initCache()` (called from `start()` after `initDb()`) opens a
+  node-redis client when the variable is set, and `cacheGet`,
+  `cacheSet`, `cacheDrop` fall back to a process-local `memoryCache`
+  map with per-entry expiry when it is not. `GET /api/tasks` now serves
+  from the `tasks:all` key (30s TTL) on a hit and populates it on a
+  miss; `POST /api/tasks` drops the key in both storage branches.
+- `package.json` / `package-lock.json`: `redis` ^6.2.1 added, lockfile
+  refreshed so the Dockerfile's `npm ci --omit=dev` stays satisfiable.
+- `/.infrar/environment/`: `resources.tf` gains `module "cache"`
+  (`source = "infrar/redis"`, `product_version = ">=6"`) and
+  `outputs.tf` the matching sensitive output, so the repository's
+  declarations match the new `requires:` entry.
+- `.infrar/knowledge.md`: rewritten for the cache layer, its
+  dependency and its invalidation rules.
 
 ## Why
 
-The preview routing convention forwards `/api/*` from the web origin to
-this service without stripping the prefix. With routes served at the
-root, every frontend call (`/api/tasks`, `/api/health`,
-`/api/tasks/:id/share`) reached the service with the `/api` prefix still
-present and answered 404. Serving under `/api` matches what the frontend
-already requests; no frontend, port, proxy or build-spec change is
-needed (`run.api_prefix` is omitted, which already means the `/api`
-default, and the healthcheck path `/health` still matches the kept
-unprefixed route).
+The task list is read on every board render and served from the same
+Postgres round-trip each time; a cache in front of it is the cheap fix,
+and the platform can only stand one up if the node declares it — an
+undeclared dependency is never provisioned and `REDIS_URL` would stay
+unset.
+
+The fallback keeps that dependency non-fatal, matching how the node
+already treats Postgres: a missing or unreachable Redis logs and
+degrades to the in-memory map instead of failing the boot, and every
+cache call is guarded so a runtime Redis error becomes a miss rather
+than a 500 on `GET /api/tasks`. Both paths were exercised against a
+local redis and with the variable unset.

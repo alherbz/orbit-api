@@ -13,6 +13,11 @@ requires:
     tenancy: database
     env:
       DATABASE_URL: url
+  cache:
+    product: redis
+    version: ">=6"
+    env:
+      REDIS_URL: url
 env:
   - name: PORT
     default: "8083"

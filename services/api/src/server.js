@@ -1,8 +1,10 @@
 import Fastify from 'fastify';
 import pg from 'pg';
+import { createClient } from 'redis';
 
 const PORT = Number(process.env.PORT || 8083);
 const DATABASE_URL = process.env.DATABASE_URL;
+const REDIS_URL = process.env.REDIS_URL;
 // Mail is optional: the API must start and serve tasks without MAIL_API_KEY,
 // and /tasks/:id/share answers 503 until the key is configured.
 const MAIL_API_KEY = process.env.MAIL_API_KEY;
@@ -18,6 +20,75 @@ const memory = [
   { id: 2, title: 'Import repos into Infrar', priority: 'medium', done: true },
 ];
 let nextId = 3;
+
+// Cache: Redis when REDIS_URL is wired (the `cache` requirement in
+// .infrar/build.yaml), otherwise a tiny in-memory map — like the task store
+// above, the service stays runnable when the dependency is absent.
+let redis = null;
+const memoryCache = new Map();
+const TASKS_CACHE_KEY = 'tasks:all';
+const TASKS_CACHE_TTL = 30; // seconds
+
+async function initCache() {
+  if (!REDIS_URL) {
+    app.log.warn('REDIS_URL not set — falling back to in-memory cache');
+    return;
+  }
+  const client = createClient({ url: REDIS_URL });
+  client.on('error', (err) => app.log.error({ err }, 'redis client error'));
+  try {
+    await client.connect();
+    redis = client;
+  } catch (err) {
+    // A cache is optional by definition: never keep the API from starting.
+    app.log.error({ err }, 'redis unreachable — falling back to in-memory cache');
+  }
+}
+
+async function cacheGet(key) {
+  try {
+    if (redis) {
+      const raw = await redis.get(key);
+      return raw ? JSON.parse(raw) : null;
+    }
+  } catch (err) {
+    app.log.error({ err, key }, 'cache read failed');
+    return null;
+  }
+  const hit = memoryCache.get(key);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    memoryCache.delete(key);
+    return null;
+  }
+  return hit.value;
+}
+
+async function cacheSet(key, value, ttl) {
+  try {
+    if (redis) {
+      await redis.set(key, JSON.stringify(value), { expiration: { type: 'EX', value: ttl } });
+      return;
+    }
+  } catch (err) {
+    app.log.error({ err, key }, 'cache write failed');
+    return;
+  }
+  memoryCache.set(key, { value, expiresAt: Date.now() + ttl * 1000 });
+}
+
+async function cacheDrop(key) {
+  try {
+    if (redis) {
+      await redis.del(key);
+      return;
+    }
+  } catch (err) {
+    app.log.error({ err, key }, 'cache invalidation failed');
+    return;
+  }
+  memoryCache.delete(key);
+}
 
 async function initDb() {
   if (!DATABASE_URL) {
@@ -128,13 +199,19 @@ async function apiRoutes(api) {
   });
 
   api.get('/tasks', async () => {
+    const cached = await cacheGet(TASKS_CACHE_KEY);
+    if (cached) return cached;
+    let tasks;
     if (pool) {
       const { rows } = await pool.query(
         'SELECT id, title, priority, done FROM tasks ORDER BY id',
       );
-      return rows;
+      tasks = rows;
+    } else {
+      tasks = memory;
     }
-    return memory;
+    await cacheSet(TASKS_CACHE_KEY, tasks, TASKS_CACHE_TTL);
+    return tasks;
   });
 
   api.post('/tasks', async (req, reply) => {
@@ -148,11 +225,13 @@ async function apiRoutes(api) {
         'INSERT INTO tasks (title, priority) VALUES ($1,$2) RETURNING id, title, priority, done',
         [title, priority],
       );
+      await cacheDrop(TASKS_CACHE_KEY);
       reply.code(201);
       return rows[0];
     }
     const task = { id: nextId++, title, priority, done: false };
     memory.push(task);
+    await cacheDrop(TASKS_CACHE_KEY);
     reply.code(201);
     return task;
   });
@@ -229,6 +308,7 @@ app.register(apiRoutes, { prefix: '/api' });
 const start = async () => {
   try {
     await initDb();
+    await initCache();
     await app.listen({ port: PORT, host: '0.0.0.0' });
   } catch (err) {
     app.log.error(err);
