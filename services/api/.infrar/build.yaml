@@ -6,11 +6,16 @@ run:
 healthcheck:
   path: /health
   port: 8083
+requires:
+  db:
+    product: postgres
+    version: ">=15 <17"
+    tenancy: database
+    env:
+      DATABASE_URL: url
 env:
   - name: PORT
     default: "8083"
-  - name: DATABASE_URL
-    from: orbit
   - name: MAIL_API_KEY
     secret: true
   - name: MAIL_FROM
