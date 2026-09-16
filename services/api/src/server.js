@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import pg from 'pg';
 import { createClient } from 'redis';
 import { initQueue } from './queue.js';
+import { initAudit, recordEvent } from './audit.js';
 
 const PORT = Number(process.env.PORT || 8083);
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -311,7 +312,11 @@ const start = async () => {
     await initDb();
     await initCache();
     await initQueue(app.log);
+    await initAudit(app.log);
     await app.listen({ port: PORT, host: '0.0.0.0' });
+    // One audit event per boot, written after the port is actually open so it
+    // records a service that is serving. A disabled audit log answers false.
+    await recordEvent('api.started', { port: PORT, storage: pool ? 'postgres' : 'memory' });
   } catch (err) {
     app.log.error(err);
     process.exit(1);
