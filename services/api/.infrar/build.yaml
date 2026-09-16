@@ -16,6 +16,7 @@ requires:
   cache:
     product: redis
     version: ">=6"
+    tenancy: db-index
     env:
       REDIS_URL: url
 env:
