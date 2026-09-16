@@ -18,6 +18,10 @@ requires:
     version: ">=6"
     env:
       REDIS_URL: url
+  mail:
+    product: mailpit
+    env:
+      SMTP_URL: url
 env:
   - name: PORT
     default: "8083"
