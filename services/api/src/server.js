@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import pg from 'pg';
 import { createClient } from 'redis';
+import { initQueue } from './queue.js';
 
 const PORT = Number(process.env.PORT || 8083);
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -309,6 +310,7 @@ const start = async () => {
   try {
     await initDb();
     await initCache();
+    await initQueue(app.log);
     await app.listen({ port: PORT, host: '0.0.0.0' });
   } catch (err) {
     app.log.error(err);

@@ -9,3 +9,7 @@ module "cache" {
   product_version = ">=6"
   tenancy         = ["db-index"]
 }
+
+module "queue" {
+  source = "infrar/rabbitmq"
+}

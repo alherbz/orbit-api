@@ -10,6 +10,7 @@
     "start": "node src/server.js"
   },
   "dependencies": {
+    "amqplib": "^2.0.1",
     "fastify": "^4.28.1",
     "pg": "^8.12.0",
     "redis": "^6.2.1"

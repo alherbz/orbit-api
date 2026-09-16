@@ -19,6 +19,10 @@ requires:
     tenancy: db-index
     env:
       REDIS_URL: url
+  queue:
+    product: rabbitmq
+    env:
+      RABBITMQ_URL: url
 env:
   - name: PORT
     default: "8083"
