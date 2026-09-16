@@ -4,35 +4,39 @@ id: 0d8f6ec5-0116-46c7-93de-f9959f56f546
 name: api
 node: services/api
 branch: test/prv-p4-drift
-previous_commit: 53168a769c81006c85c75c5de093304ca6a27a18
+previous_commit: 866b1c9b8f01507f4436427c557ba358f35c80ba
 ---
 
 ## What changed
 
-- **`services/api/.infrar/build.yaml`** — a fourth `requires:` entry, `auth`:
-  `product: keycloak`, `version: "26.3"`, projecting `KEYCLOAK_URL: url`. No
-  `tenancy:` is stated, so the product default applies. The existing `db`,
-  `cache` and `queue` entries and the whole `env:` list are untouched.
-- **`.infrar/environment/resources.tf`** — the matching `module "auth"`, with
-  `source = "infrar/keycloak"` and `product_version = "26.3"`. No `tenancy`,
-  matching the requirement.
-- **`.infrar/environment/outputs.tf`** — `output "auth"` (`sensitive = true`),
-  keeping the file's invariant of one sensitive output per module.
+`services/api/.infrar/build.yaml`, `requires:`:
 
-No application code, dependency manifest, Dockerfile or pod manifest was
-touched; `package.json` gains no Keycloak or OIDC client.
+- `queue` (rabbitmq) gained `version: ">=4.1"` — amqplib's own README states that from
+  `0.10.7` on it is compatible with RabbitMQ 4.1.0 and later, and the node runs `2.0.1` —
+  `tenancy: vhost`, and `RABBITMQ_PASSWORD: password` in its `env:`. The code has read
+  `RABBITMQ_PASSWORD` since the credentials change; nothing projected it, so the branch
+  that sends explicit PLAIN credentials could never fire in a Preview.
+- `db-mongodb` (mongodb) gained `version: ">=4.4"` — the installed driver (`mongodb`
+  7.6.0, via mongoose 9.10.1) states "the driver currently supports 4.4+ servers" — and
+  `tenancy: database`. Its `DATABASE_URL: url` projection was **removed**: the same
+  variable is projected by `requires.db` (postgres), only one value can reach the pod, and
+  a Mongo connection string handed to `pg.Pool` breaks every task route.
+- `env:` gained `TASKS_QUEUE` with `default: "orbit.tasks"`, the value `queue.js` carries.
+
+`.infrar/environment/resources.tf`: `module "queue"` and `module "db-mongodb"` carry the
+same `product_version` and `tenancy` as the entries above.
+
+Unchanged and deliberately so: `db` (postgres `>=15 <17`, matching the Postgres 16 engine
+`deploy/main.tf` provisions), `cache` (redis `>=6`), and `auth` (keycloak `26.3`), which
+still has no consumer anywhere in `services/api/src`.
 
 ## Why
 
-The api node is to depend on a Keycloak identity provider, and a dependency the
-build spec does not declare is one the Preview cannot run: `requires:` is what
-makes the platform bind a namespace resource and project its address into the
-pod environment. The repository-level declarations under `.infrar/environment/`
-are updated in the same commit, as they must be whenever a `requires:` entry is
-added, so the resource the repository needs is stated as OpenTofu alongside the
-node that asks for it.
+The node's `requires:` named its products but not the versions the code was written
+against, and left two variables the code reads unprojected. Both version ranges here are
+read from the installed drivers rather than chosen, and the tenancy of each entry is the
+unit that connection actually needs — a vhost for the queue, a database for Mongo.
 
-This commit is a declaration ahead of its consumer: nothing under
-`services/api/src` reads `KEYCLOAK_URL` and no Keycloak client is installed, so
-`auth` currently binds a resource the code never contacts. Wiring the variable
-into the application is deliberately left to a later change.
+The removed `DATABASE_URL` was the one outright defect: two requirements projecting one
+variable name is not a preference, it is a value that arrives wrong for whichever consumer
+loses.

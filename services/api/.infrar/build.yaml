@@ -21,8 +21,11 @@ requires:
       REDIS_URL: url
   queue:
     product: rabbitmq
+    version: ">=4.1"
+    tenancy: vhost
     env:
       RABBITMQ_URL: url
+      RABBITMQ_PASSWORD: password
   auth:
     product: keycloak
     version: "26.3"
@@ -30,6 +33,8 @@ requires:
       KEYCLOAK_URL: url
   db-mongodb:
     product: mongodb
+    version: ">=4.4"
+    tenancy: database
     env:
       MONGODB_URL: url
       DATABASE_URL: url
@@ -40,3 +45,5 @@ env:
     secret: true
   - name: MAIL_FROM
     default: "orbit@mail.infrar.io"
+  - name: TASKS_QUEUE
+    default: "orbit.tasks"

@@ -11,7 +11,9 @@ module "cache" {
 }
 
 module "queue" {
-  source = "infrar/rabbitmq"
+  source          = "infrar/rabbitmq"
+  product_version = ">=4.1"
+  tenancy         = ["vhost"]
 }
 
 module "auth" {
@@ -20,5 +22,7 @@ module "auth" {
 }
 
 module "db-mongodb" {
-  source = "infrar/mongodb"
+  source          = "infrar/mongodb"
+  product_version = ">=4.4"
+  tenancy         = ["database"]
 }
