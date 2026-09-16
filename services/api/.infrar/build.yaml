@@ -37,7 +37,6 @@ requires:
     tenancy: database
     env:
       MONGODB_URL: url
-      DATABASE_URL: url
 env:
   - name: PORT
     default: "8083"
