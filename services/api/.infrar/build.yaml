@@ -15,7 +15,7 @@ requires:
       DATABASE_URL: url
   cache:
     product: redis
-    version: ">=6"
+    version: ">=7.2 <8"
     tenancy: db-index
     env:
       REDIS_URL: url
