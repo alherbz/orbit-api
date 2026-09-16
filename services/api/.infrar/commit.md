@@ -4,39 +4,41 @@ id: 0d8f6ec5-0116-46c7-93de-f9959f56f546
 name: api
 node: services/api
 branch: test/prv-p4-drift
-previous_commit: 866b1c9b8f01507f4436427c557ba358f35c80ba
+previous_commit: 6045cd91c2275947b379d625069c825a5227ffea
 ---
 
 ## What changed
 
-`services/api/.infrar/build.yaml`, `requires:`:
+`services/api/.infrar/build.yaml`, `requires.db-mongodb.env`: `DATABASE_URL: url` removed.
+The entry now projects `MONGODB_URL: url` only. Nothing else in `requires:` changed —
+`db` (postgres `>=15 <17`, `database`), `cache` (redis `>=6`, `db-index`),
+`queue` (rabbitmq `>=4.1`, `vhost`, `RABBITMQ_URL` + `RABBITMQ_PASSWORD`),
+`auth` (keycloak `26.3`, `KEYCLOAK_URL`) and `db-mongodb` (mongodb `>=4.4`, `database`)
+keep their product, version range, tenancy and projections.
 
-- `queue` (rabbitmq) gained `version: ">=4.1"` — amqplib's own README states that from
-  `0.10.7` on it is compatible with RabbitMQ 4.1.0 and later, and the node runs `2.0.1` —
-  `tenancy: vhost`, and `RABBITMQ_PASSWORD: password` in its `env:`. The code has read
-  `RABBITMQ_PASSWORD` since the credentials change; nothing projected it, so the branch
-  that sends explicit PLAIN credentials could never fire in a Preview.
-- `db-mongodb` (mongodb) gained `version: ">=4.4"` — the installed driver (`mongodb`
-  7.6.0, via mongoose 9.10.1) states "the driver currently supports 4.4+ servers" — and
-  `tenancy: database`. Its `DATABASE_URL: url` projection was **removed**: the same
-  variable is projected by `requires.db` (postgres), only one value can reach the pod, and
-  a Mongo connection string handed to `pg.Pool` breaks every task route.
-- `env:` gained `TASKS_QUEUE` with `default: "orbit.tasks"`, the value `queue.js` carries.
+`.infrar/environment/`: unchanged and verified. The requirement set is the same five keys,
+so `resources.tf` already carries one `module` per key with the same `product_version` and
+`tenancy`, `outputs.tf` one sensitive output per module, and `versions.tf` Infrar's stamp.
 
-`.infrar/environment/resources.tf`: `module "queue"` and `module "db-mongodb"` carry the
-same `product_version` and `tenancy` as the entries above.
-
-Unchanged and deliberately so: `db` (postgres `>=15 <17`, matching the Postgres 16 engine
-`deploy/main.tf` provisions), `cache` (redis `>=6`), and `auth` (keycloak `26.3`), which
-still has no consumer anywhere in `services/api/src`.
+`services/api/.infrar/knowledge.md`, two Notes bullets that the spec on disk falsified:
+`DATABASE_URL` is no longer described as projected twice, and `RABBITMQ_PASSWORD` /
+`TASKS_QUEUE` are no longer described as undeclared — both have been declared since 6045cd9.
 
 ## Why
 
-The node's `requires:` named its products but not the versions the code was written
-against, and left two variables the code reads unprojected. Both version ranges here are
-read from the installed drivers rather than chosen, and the tenancy of each entry is the
-unit that connection actually needs — a vhost for the queue, a database for Mongo.
+`DATABASE_URL` was projected by two requirements at once, postgres and mongodb. Only one
+value can reach the pod, so whichever requirement loses hands its consumer an address for
+the other engine: a Mongo connection string reaching `pg.Pool` in `src/server.js` fails
+every task route. That is a defect, not a preference. The message of 6045cd9 states the
+removal as done, but the committed file still carried the line — this commit makes the
+spec match what was already claimed of it.
 
-The removed `DATABASE_URL` was the one outright defect: two requirements projecting one
-variable name is not a preference, it is a value that arrives wrong for whichever consumer
-loses.
+The coherence gate compared each declaration with the client that actually speaks to it.
+`pg` 8.22.0 and the SQL in `initDb` (`SERIAL`, `CREATE TABLE IF NOT EXISTS`, `::int`,
+`RETURNING`) are satisfied by every version in `>=15 <17`, the range that also contains the
+Postgres 16 engine `deploy/main.tf` provisions. `amqplib` 2.0.1 states compatibility with
+RabbitMQ 4.1.0 and later, matching `>=4.1`. The `mongodb` driver 7.6.0 pulled in by mongoose
+9.10.1 states it supports 4.4+ servers, matching `>=4.4`. `redis` `>=6` is the one range the
+code contradicts — node-redis 6.2.1 supports Redis 7.2, 7.4 and 8.0 and marks `< 7.2`
+unsupported — and it is reported rather than re-versioned here, because picking a version
+for a member is not this change's call.
