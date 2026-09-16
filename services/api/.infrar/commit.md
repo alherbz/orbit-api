@@ -4,38 +4,38 @@ id: 0d8f6ec5-0116-46c7-93de-f9959f56f546
 name: api
 node: services/api
 branch: test/prv-p4-drift
-previous_commit: 2b62829573111a14ae62059333641e4bdb3668a4
+previous_commit: 96f0dd55ba83ce850d8a1d39a5a2da285c5382ae
 ---
 
 ## What changed
 
-- `services/api/package.json`: new dependency `amqplib` (`^2.0.1`), the AMQP 0-9-1 client
-  for RabbitMQ. `package-lock.json` refreshed to match — amqplib 2.0.1 has no transitive
-  dependencies.
-- `services/api/src/queue.js` (new): the queue publisher. `initQueue(logger)` reads
-  `RABBITMQ_URL` from `process.env`, connects with amqplib's promise API, creates one
-  channel and asserts the durable queue named by `TASKS_QUEUE` (default `orbit.tasks`).
-  `publish(message, queue?)` sends a persistent JSON message and returns false when the
-  broker is not connected.
-- `services/api/src/server.js`: imports `initQueue` and calls it in `start()`, after
-  `initDb()` and `initCache()`.
+`services/api/src/queue.js` now reads `RABBITMQ_PASSWORD` from `process.env`
+alongside `RABBITMQ_URL`, and imports `credentials` from `amqplib` next to
+`connect`.
 
-Nothing else changed. The Infrar build spec, the environment declarations, the pod
-manifest and the node knowledge file were left untouched on the author's instruction, so
-they do not yet mention this dependency.
+A new internal helper, `connectOptions(url)`, decides whether to hand amqplib
+explicit credentials:
+
+- `RABBITMQ_PASSWORD` unset, or `RABBITMQ_URL` unparseable, or the URL already
+  carrying a password → no options are passed, so the connection is opened
+  exactly as before.
+- the URL carries no password → `{ credentials: credentials.plain(user,
+  RABBITMQ_PASSWORD) }`, where `user` is the URL's percent-decoded username, or
+  `guest` when the URL has no userinfo at all.
+
+`initQueue` passes the result as the second argument of `connect`. Nothing else
+changed: the queue name, the durable `assertQueue`, the error/close handlers,
+`publish` and the optional-broker degradation are untouched.
 
 ## Why
 
-The api node needs to hand work off to a broker, and RabbitMQ is the broker chosen for it.
-The publisher is deliberately the smallest thing that can do that: one module, one
-connection, one channel, no queue topology beyond the durable queue it writes to.
+`RABBITMQ_URL` is an address, and a broker credential does not always travel
+inside it — a deployment that injects the secret separately would otherwise
+authenticate with an empty password, because amqplib derives PLAIN credentials
+from the URL userinfo and treats a missing password as `''`.
 
-It follows the degradation the node already applies to Postgres and Redis — an absent or
-unreachable dependency is logged and the service still starts. That keeps the node runnable
-wherever `RABBITMQ_URL` is not set, which today includes the preview, since the build spec
-does not declare the requirement that would inject it. Both EventEmitters amqplib hands
-back (the connection and the channel) get an `error` listener, because an unhandled `error`
-event on either would otherwise terminate the process.
-
-`publish()` has no call site yet: this change introduces the capability, it does not decide
-which events the api emits.
+The username has to accompany the password because amqplib's
+`socketOptions.credentials` replaces the URL's userinfo wholesale rather than
+merging with it (`lib/connect.js`: `sockopts.credentials ||
+credentialsFromUrl(parts)`); `guest` is the same default amqplib itself applies
+to a URL with no userinfo.
