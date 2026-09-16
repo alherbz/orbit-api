@@ -13,3 +13,12 @@ module "cache" {
 module "queue" {
   source = "infrar/rabbitmq"
 }
+
+module "auth" {
+  source          = "infrar/keycloak"
+  product_version = "26.3"
+}
+
+module "db-mongodb" {
+  source = "infrar/mongodb"
+}

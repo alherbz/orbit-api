@@ -4,41 +4,35 @@ id: 0d8f6ec5-0116-46c7-93de-f9959f56f546
 name: api
 node: services/api
 branch: test/prv-p4-drift
-previous_commit: 69012894cdf704d1656f024798921ac91b7483d1
+previous_commit: 53168a769c81006c85c75c5de093304ca6a27a18
 ---
 
 ## What changed
 
-- **`src/audit.js` (new)** — the audit log. `initAudit(logger)` reads `MONGODB_URL`
-  from `process.env` and opens the default mongoose connection with
-  `serverSelectionTimeoutMS: 5000`; it registers `error`, `disconnected` and
-  `connected` handlers on the connection and never throws. `recordEvent(name, payload)`
-  writes one document (`name`, `payload`, `at`) to the `audit_events` collection
-  through the `AuditEvent` model and returns `true`/`false`.
-- **`src/server.js`** — imports `initAudit`/`recordEvent`, calls `initAudit(app.log)`
-  in `start()` after `initQueue`, and records a single `api.started` event
-  (`port`, `storage`) after `app.listen()` succeeds.
-- **`package.json` / `package-lock.json`** — dependency `mongoose` `^9.10.1`
-  (resolved 9.10.1, which pulls the `mongodb` 7.x driver and six other packages).
-  The lockfile was regenerated because the Dockerfile builds with `npm ci`.
+- **`services/api/.infrar/build.yaml`** — a fourth `requires:` entry, `auth`:
+  `product: keycloak`, `version: "26.3"`, projecting `KEYCLOAK_URL: url`. No
+  `tenancy:` is stated, so the product default applies. The existing `db`,
+  `cache` and `queue` entries and the whole `env:` list are untouched.
+- **`.infrar/environment/resources.tf`** — the matching `module "auth"`, with
+  `source = "infrar/keycloak"` and `product_version = "26.3"`. No `tenancy`,
+  matching the requirement.
+- **`.infrar/environment/outputs.tf`** — `output "auth"` (`sensitive = true`),
+  keeping the file's invariant of one sensitive output per module.
+
+No application code, dependency manifest, Dockerfile or pod manifest was
+touched; `package.json` gains no Keycloak or OIDC client.
 
 ## Why
 
-The node needed an audit trail of what it does, kept outside the task store.
+The api node is to depend on a Keycloak identity provider, and a dependency the
+build spec does not declare is one the Preview cannot run: `requires:` is what
+makes the platform bind a namespace resource and project its address into the
+pod environment. The repository-level declarations under `.infrar/environment/`
+are updated in the same commit, as they must be whenever a `requires:` entry is
+added, so the resource the repository needs is stated as OpenTofu alongside the
+node that asks for it.
 
-The module follows the shape the rest of this service already uses for an
-external dependency — `initDb`, `initCache`, `initQueue`: absent or unreachable
-infrastructure degrades to a no-op and never keeps the API from booting. Two
-mongoose defaults work against that and are handled explicitly:
-
-- **Server selection defaults to 30s** (`mongodb/lib/connection_string.js`).
-  Since `initAudit` is awaited before `app.listen()`, an unreachable Mongo would
-  hold the port shut for 30 seconds every boot; the cap brings that to 5s.
-- **`bufferCommands` defaults to true**, so a write issued with no connection
-  does not fail — it buffers and rejects after `bufferTimeoutMS` (10s, measured).
-  `recordEvent` therefore gates on an explicit ready flag, which is what makes a
-  disabled audit log cost nothing per call instead of a timeout.
-
-`recordEvent` is called once per boot and has no other callers yet: which
-domain events the API audits is a product decision, not part of wiring the
-module in.
+This commit is a declaration ahead of its consumer: nothing under
+`services/api/src` reads `KEYCLOAK_URL` and no Keycloak client is installed, so
+`auth` currently binds a resource the code never contacts. Wiring the variable
+into the application is deliberately left to a later change.

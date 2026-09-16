@@ -23,6 +23,16 @@ requires:
     product: rabbitmq
     env:
       RABBITMQ_URL: url
+  auth:
+    product: keycloak
+    version: "26.3"
+    env:
+      KEYCLOAK_URL: url
+  db-mongodb:
+    product: mongodb
+    env:
+      MONGODB_URL: url
+      DATABASE_URL: url
 env:
   - name: PORT
     default: "8083"

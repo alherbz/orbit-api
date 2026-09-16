@@ -12,3 +12,13 @@ output "queue" {
   value     = module.queue
   sensitive = true
 }
+
+output "auth" {
+  value     = module.auth
+  sensitive = true
+}
+
+output "db-mongodb" {
+  value     = module.db-mongodb
+  sensitive = true
+}
