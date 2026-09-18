@@ -10,9 +10,6 @@ requires:
   metrics:
     product: prometheus
     version: "2.54"
-    image:
-      repository: docker.io/prom/prometheus
-      tag: v2.54.1
     port: 9090
     env:
       METRICS_URL: url
