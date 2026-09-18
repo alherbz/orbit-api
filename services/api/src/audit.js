@@ -28,12 +28,13 @@ const AuditEvent = mongoose.model('AuditEvent', auditEventSchema);
 
 // Opens the single default mongoose connection. Never throws: a database that
 // is absent or unreachable leaves `ready` false and recordEvent() answers
-// false, so the caller never has to guard the call.
+// false, so the caller never has to guard the call. Answers that same flag, so
+// the boot summary can state it in one place.
 export async function initAudit(logger) {
   if (logger) log = logger;
   if (!MONGODB_URL) {
     log.warn('MONGODB_URL not set — audit log disabled');
-    return;
+    return false;
   }
   // The connection is an EventEmitter: an unhandled 'error' would take the
   // process down. These also carry the flag across a drop and a reconnect,
@@ -50,8 +51,10 @@ export async function initAudit(logger) {
     await mongoose.connect(MONGODB_URL, { serverSelectionTimeoutMS: CONNECT_TIMEOUT_MS });
     ready = true;
     log.info({ collection: AUDIT_COLLECTION }, 'audit log ready');
+    return true;
   } catch (err) {
     log.error({ err }, 'mongodb unreachable — audit log disabled');
+    return false;
   }
 }
 

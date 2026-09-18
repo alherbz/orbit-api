@@ -1,8 +1,8 @@
 import Fastify from 'fastify';
 import pg from 'pg';
 import { createClient } from 'redis';
-import { initQueue } from './queue.js';
-import { initAudit, recordEvent } from './audit.js';
+import { initQueue, queueName } from './queue.js';
+import { initAudit, recordEvent, auditCollection } from './audit.js';
 
 const PORT = Number(process.env.PORT || 8083);
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -41,6 +41,7 @@ async function initCache() {
   try {
     await client.connect();
     redis = client;
+    app.log.info('redis cache ready');
   } catch (err) {
     // A cache is optional by definition: never keep the API from starting.
     app.log.error({ err }, 'redis unreachable — falling back to in-memory cache');
@@ -113,6 +114,7 @@ async function initDb() {
       ['Ship the YC demo', 'high', false, 'Import repos into Infrar', 'medium', true],
     );
   }
+  app.log.info({ seeded: rows[0].n === 0 }, 'postgres store ready');
 }
 
 // Storage mode feeds the web header's status chip: "postgres" when the pool
@@ -308,17 +310,33 @@ async function apiRoutes(api) {
 app.register(apiRoutes, { prefix: '/api' });
 
 const start = async () => {
+  const bootStartedAt = Date.now();
   try {
     await initDb();
     await initCache();
-    await initQueue(app.log);
-    await initAudit(app.log);
+    const queueReady = await initQueue(app.log);
+    const auditReady = await initAudit(app.log);
     await app.listen({ port: PORT, host: '0.0.0.0' });
+    // Every dependency here is optional and each initialiser reports its own
+    // outcome as it happens. This is the single line that states which shape
+    // the service actually booted in, so one log tells the whole story: read
+    // from the live state, never from the env, so a wired-but-unreachable
+    // dependency reads 'memory'/'disabled' and not the value that was injected.
+    const boot = {
+      port: PORT,
+      storage: pool ? 'postgres' : 'memory',
+      cache: redis ? 'redis' : 'memory',
+      queue: queueReady ? queueName : 'disabled',
+      audit: auditReady ? auditCollection : 'disabled',
+      mail: MAIL_API_KEY ? 'resend' : 'disabled',
+      bootMs: Date.now() - bootStartedAt,
+    };
+    app.log.info(boot, 'orbit-api ready');
     // One audit event per boot, written after the port is actually open so it
     // records a service that is serving. A disabled audit log answers false.
-    await recordEvent('api.started', { port: PORT, storage: pool ? 'postgres' : 'memory' });
+    await recordEvent('api.started', boot);
   } catch (err) {
-    app.log.error(err);
+    app.log.error({ err, bootMs: Date.now() - bootStartedAt }, 'orbit-api failed to start');
     process.exit(1);
   }
 };

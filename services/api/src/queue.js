@@ -36,12 +36,13 @@ function connectOptions(url) {
 
 // Opens one connection and one channel, and asserts the durable queue the
 // publisher writes to. Never throws: a broker that is absent or unreachable
-// leaves `channel` null and publish() answers false.
+// leaves `channel` null and publish() answers false. Answers whether the
+// publisher came up, so the boot summary can state it in one place.
 export async function initQueue(logger) {
   if (logger) log = logger;
   if (!RABBITMQ_URL) {
     log.warn('RABBITMQ_URL not set — queue publishing disabled');
-    return;
+    return false;
   }
   try {
     const conn = await connect(RABBITMQ_URL, connectOptions(RABBITMQ_URL));
@@ -57,8 +58,10 @@ export async function initQueue(logger) {
     await ch.assertQueue(TASKS_QUEUE, { durable: true });
     channel = ch;
     log.info({ queue: TASKS_QUEUE }, 'rabbitmq publisher ready');
+    return true;
   } catch (err) {
     log.error({ err }, 'rabbitmq unreachable — queue publishing disabled');
+    return false;
   }
 }
 
