@@ -20,3 +20,5 @@ env:
     secret: true
   - name: MAIL_FROM
     default: "orbit@mail.infrar.io"
+
+  this: is: not: yaml: [
