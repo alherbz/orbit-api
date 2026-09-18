@@ -4,6 +4,10 @@ import { createClient } from 'redis';
 import { initQueue } from './queue.js';
 import { initAudit, recordEvent } from './audit.js';
 
+// FIXTURE (PRV verification 2.7): the member's own code fails at start.
+throw new Error('orbit-api: TASKS_DB_SCHEMA is required and was not provided');
+
+
 const PORT = Number(process.env.PORT || 8083);
 const DATABASE_URL = process.env.DATABASE_URL;
 const REDIS_URL = process.env.REDIS_URL;
