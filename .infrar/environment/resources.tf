@@ -6,5 +6,6 @@ module "db" {
 
 module "cache" {
   source          = "infrar/redis"
-  product_version = ">=6"
+  product_version = ">=7.2 <8"
+  tenancy         = ["db-index"]
 }
