@@ -7,12 +7,6 @@ healthcheck:
   path: /health
   port: 8083
 requires:
-  metrics:
-    product: prometheus
-    version: "2.54"
-    port: 9090
-    env:
-      METRICS_URL: url
   db:
     product: postgres
     version: ">=15 <17"
