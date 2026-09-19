@@ -31,15 +31,11 @@ requires:
     version: "26.3"
     env:
       KEYCLOAK_URL: url
-  badstart:
-    product: neverstarts
-    version: "1.0"
-    image:
-      repository: docker.io/infrar/this-image-does-not-exist
-      tag: v0
-    port: 9999
+  oldmetrics:
+    product: prometheus
+    version: "<2"
     env:
-      BADSTART_URL: url
+      OLDMETRICS_URL: url
   db-mongodb:
     product: mongodb
     version: ">=4.4"
