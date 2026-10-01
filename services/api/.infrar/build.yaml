@@ -15,3 +15,8 @@ env:
     secret: true
   - name: MAIL_FROM
     default: "orbit@mail.infrar.io"
+  - name: NSC_WRITTEN
+    secret: true
+  - name: NSC_CHOSEN
+  - name: NSC_CATALOG
+    catalog: nsc_s7_key
