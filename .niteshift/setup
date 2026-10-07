@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "${NITESHIFT_ENVIRONMENT_SETTINGS_DIR:?}/.."
+
+# Install host dependencies for migrations and ordinary development commands.
+npm ci --prefix services/api
+npm ci --prefix services/worker
+
+# Prepare the existing stack; the supervisor owns its foreground lifetime.
+export ORBIT_SIGNING_SECRET=orbit-niteshift-local-development-signing-key
+export MAIL_API_KEY=
+docker compose -f docker-compose.yml -f .niteshift/files/compose.yaml pull --ignore-buildable
+docker compose -f docker-compose.yml -f .niteshift/files/compose.yaml build

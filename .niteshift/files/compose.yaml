@@ -1,0 +1,36 @@
+# Keep the repository's process manager and task-local infrastructure together.
+services:
+  api:
+    image: orbit-niteshift-api
+    command: [sh, -ec, 'npm run migrate && npm run seed && exec node --watch src/server.js']
+    volumes:
+      - ./services/api/src:/app/src:ro
+      - ./services/api/migrations:/app/migrations:ro
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8083/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  worker:
+    command: [node, --watch, src/worker.js]
+    volumes:
+      - ./services/worker/src:/app/src:ro
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+  postgres:
+    restart: unless-stopped
+  redis:
+    restart: unless-stopped
+  minio:
+    image: chainguard/minio@sha256:e7ca559d9f7c0b5f24f5f669bb92f40f3ca88d56273b808bf3a7c116c17d2ffa
+    user: "0:0"
+    restart: unless-stopped
+  createbuckets:
+    image: orbit-niteshift-api
+    build: ./services/api
+    entrypoint: [node]
+    command: [/app/create-bucket.mjs]
+    volumes:
+      - ./.niteshift/files/create-bucket.mjs:/app/create-bucket.mjs:ro

@@ -1,0 +1,10 @@
+services:
+  - name: stack
+    command: docker compose -f docker-compose.yml -f .niteshift/files/compose.yaml up --remove-orphans
+    port: 8083
+    stopGracePeriod: 45s
+    environment:
+      - name: ORBIT_SIGNING_SECRET
+        value: orbit-niteshift-local-development-signing-key
+      - name: MAIL_API_KEY
+        value: ""

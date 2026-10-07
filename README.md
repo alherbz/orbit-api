@@ -54,3 +54,22 @@ npm run seed      # demo tasks, only on an empty database
 and the worker; then run the migrations as above against `localhost:5432`, or
 `docker compose run --rm api npm run migrate && docker compose run --rm api npm run seed`.
 The API listens on `http://localhost:8083`.
+
+## Niteshift
+
+`.niteshift/setup` installs both Node packages and prepares the Docker Compose
+images. The Niteshift Compose override uses digest-pinned Chainguard MinIO
+image because the original MinIO images cannot be pulled. One supervised
+`stack` service runs the existing local Postgres, Redis,
+MinIO, API, and worker. The API applies migrations and seeds an empty database
+before becoming healthy; the worker waits for that health check. Source changes
+restart Node automatically. Dependency changes require rerunning setup and
+recreating the affected containers.
+
+The API preview uses port 8083; `/health` and `/api/health` report dependency
+readiness. This repository has no browser UI or application login. Local storage
+credentials and the signing key are development-only values, stable across
+restarts. Email sharing remains disabled unless `MAIL_API_KEY` is configured:
+add a secret reference for it to the stack service's environment. Compose already
+passes that variable through to the API. Docker volumes retain sandbox data;
+no resume script is needed because the supervisor restarts Compose.
