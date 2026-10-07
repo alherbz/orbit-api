@@ -46,7 +46,7 @@ function verify(token) {
 }
 
 async function findTask(id) {
-  const { rows } = await pool.query('SELECT id, title, priority, done FROM tasks WHERE id = $1', [id]);
+  const { rows } = await pool.query('SELECT id, title, owner, priority, done FROM tasks WHERE id = $1', [id]);
   return rows[0] ?? null;
 }
 
@@ -63,7 +63,7 @@ async function apiRoutes(api) {
     const cached = await redis.get(TASKS_CACHE_KEY);
     if (cached) return JSON.parse(cached);
     const { rows } = await pool.query(
-      `SELECT t.id, t.title, t.priority, t.done, COUNT(a.id)::int AS attachments
+      `SELECT t.id, t.title, t.owner, t.priority, t.done, COUNT(a.id)::int AS attachments
          FROM tasks t LEFT JOIN attachments a ON a.task_id = t.id
         GROUP BY t.id ORDER BY t.id`,
     );
@@ -72,14 +72,18 @@ async function apiRoutes(api) {
   });
 
   api.post('/tasks', async (req, reply) => {
-    const { title, priority = 'medium' } = req.body ?? {};
+    const { title, owner, priority = 'medium' } = req.body ?? {};
     if (!title) {
       reply.code(400);
       return { error: 'title is required' };
     }
+    if (typeof owner !== 'string' || !owner.trim()) {
+      reply.code(400);
+      return { error: 'owner is required and must be a non-empty string' };
+    }
     const { rows } = await pool.query(
-      'INSERT INTO tasks (title, priority) VALUES ($1,$2) RETURNING id, title, priority, done',
-      [title, priority],
+      'INSERT INTO tasks (title, owner, priority) VALUES ($1,$2,$3) RETURNING id, title, owner, priority, done',
+      [title, owner.trim(), priority],
     );
     await redis.del(TASKS_CACHE_KEY);
     await emit('task.created', rows[0]);
@@ -95,7 +99,7 @@ async function apiRoutes(api) {
       return { error: 'an integer id and a boolean "done" are required' };
     }
     const { rows } = await pool.query(
-      'UPDATE tasks SET done = $2 WHERE id = $1 RETURNING id, title, priority, done',
+      'UPDATE tasks SET done = $2 WHERE id = $1 RETURNING id, title, owner, priority, done',
       [id, done],
     );
     if (!rows[0]) {

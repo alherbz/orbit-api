@@ -9,10 +9,10 @@ if (rows[0].n > 0) {
   console.log('[seed] tasks already present — skipped');
 } else {
   await client.query(
-    `INSERT INTO tasks (title, priority, done) VALUES
-       ('Ship the YC demo', 'high', false),
-       ('Import the repositories', 'medium', true),
-       ('Write the onboarding email', 'low', false)`,
+    `INSERT INTO tasks (title, owner, priority, done) VALUES
+       ('Ship the YC demo', 'unassigned', 'high', false),
+       ('Import the repositories', 'unassigned', 'medium', true),
+       ('Write the onboarding email', 'unassigned', 'low', false)`,
   );
   await client.query(
     `INSERT INTO activity (task_id, kind, message)
