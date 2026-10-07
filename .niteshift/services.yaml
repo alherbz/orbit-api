@@ -4,9 +4,9 @@ services:
     cwd: ../orbit-web
     port: 3000
     environment:
-      # orbit-web main strips /api; include it in the upstream base URL.
+      # orbit-web bench/orbit-plus preserves /api when forwarding requests.
       - name: API_URL
-        value: http://localhost:8083/api
+        value: http://localhost:8083
   - name: stack
     command: docker compose -f docker-compose.yml -f .niteshift/files/compose.yaml up --remove-orphans
     port: 8083

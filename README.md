@@ -68,8 +68,9 @@ recreating the affected containers.
 
 Niteshift also checks out `alherbz/orbit-web`. Setup installs its dependencies,
 and the first preview runs its frontend on port 3000. The frontend proxies
-browser `/api/*` requests to `http://localhost:8083/api`: its current default
-branch strips the `/api` prefix, so the upstream base URL restores it. The
+browser `/api/*` requests to `http://localhost:8083`, preserving the prefix.
+Use `bench/orbit-plus` for both repositories with this configuration; the
+frontend default branch uses a different proxy contract. The
 browser uses one origin and needs no separate API URL or CORS configuration.
 
 The API preview uses port 8083; `/health` and `/api/health` report dependency
