@@ -19,7 +19,8 @@ async function health(_req, reply) {
 }
 app.get('/health', health);
 
-const TASKS_CACHE_KEY = 'orbit:tasks';
+// Avoid returning older cached task objects that lack due_date.
+const TASKS_CACHE_KEY = 'orbit:tasks:v2';
 const TASKS_CACHE_TTL_S = 10;
 
 // Quiz broadcast over SSE; connections are per-process.
@@ -46,7 +47,7 @@ function verify(token) {
 }
 
 async function findTask(id) {
-  const { rows } = await pool.query('SELECT id, title, priority, done FROM tasks WHERE id = $1', [id]);
+  const { rows } = await pool.query('SELECT id, title, priority, done, due_date::text AS due_date FROM tasks WHERE id = $1', [id]);
   return rows[0] ?? null;
 }
 
@@ -63,7 +64,7 @@ async function apiRoutes(api) {
     const cached = await redis.get(TASKS_CACHE_KEY);
     if (cached) return JSON.parse(cached);
     const { rows } = await pool.query(
-      `SELECT t.id, t.title, t.priority, t.done, COUNT(a.id)::int AS attachments
+      `SELECT t.id, t.title, t.priority, t.done, t.due_date::text AS due_date, COUNT(a.id)::int AS attachments
          FROM tasks t LEFT JOIN attachments a ON a.task_id = t.id
         GROUP BY t.id ORDER BY t.id`,
     );
@@ -72,14 +73,24 @@ async function apiRoutes(api) {
   });
 
   api.post('/tasks', async (req, reply) => {
-    const { title, priority = 'medium' } = req.body ?? {};
+    const { title, priority = 'medium', due_date = null } = req.body ?? {};
     if (!title) {
       reply.code(400);
       return { error: 'title is required' };
     }
+    if (due_date !== null) {
+      const date = typeof due_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(due_date)
+        ? new Date(`${due_date}T00:00:00Z`)
+        : null;
+      if (!date || !Number.isFinite(date.getTime()) || date.getUTCFullYear() < 1 ||
+          date.toISOString().slice(0, 10) !== due_date) {
+        reply.code(400);
+        return { error: 'due_date must be a valid date in YYYY-MM-DD format or null' };
+      }
+    }
     const { rows } = await pool.query(
-      'INSERT INTO tasks (title, priority) VALUES ($1,$2) RETURNING id, title, priority, done',
-      [title, priority],
+      'INSERT INTO tasks (title, priority, due_date) VALUES ($1,$2,$3) RETURNING id, title, priority, done, due_date::text AS due_date',
+      [title, priority, due_date],
     );
     await redis.del(TASKS_CACHE_KEY);
     await emit('task.created', rows[0]);
@@ -95,7 +106,7 @@ async function apiRoutes(api) {
       return { error: 'an integer id and a boolean "done" are required' };
     }
     const { rows } = await pool.query(
-      'UPDATE tasks SET done = $2 WHERE id = $1 RETURNING id, title, priority, done',
+      'UPDATE tasks SET done = $2 WHERE id = $1 RETURNING id, title, priority, done, due_date::text AS due_date',
       [id, done],
     );
     if (!rows[0]) {
