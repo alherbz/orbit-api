@@ -1,4 +1,12 @@
 services:
+  - name: web
+    command: node --watch server.js
+    cwd: ../orbit-web
+    port: 3000
+    environment:
+      # orbit-web main strips /api; include it in the upstream base URL.
+      - name: API_URL
+        value: http://localhost:8083/api
   - name: stack
     command: docker compose -f docker-compose.yml -f .niteshift/files/compose.yaml up --remove-orphans
     port: 8083

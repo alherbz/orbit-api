@@ -5,6 +5,8 @@ cd "${NITESHIFT_ENVIRONMENT_SETTINGS_DIR:?}/.."
 # Install host dependencies for migrations and ordinary development commands.
 npm ci --prefix services/api
 npm ci --prefix services/worker
+# orbit-web does not commit a lockfile; avoid creating one during setup.
+npm install --prefix "${NITESHIFT_CHECKOUT_ROOT:?}/orbit-web" --package-lock=false
 
 # Prepare the existing stack; the supervisor owns its foreground lifetime.
 export ORBIT_SIGNING_SECRET=orbit-niteshift-local-development-signing-key

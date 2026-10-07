@@ -66,8 +66,14 @@ before becoming healthy; the worker waits for that health check. Source changes
 restart Node automatically. Dependency changes require rerunning setup and
 recreating the affected containers.
 
+Niteshift also checks out `alherbz/orbit-web`. Setup installs its dependencies,
+and the first preview runs its frontend on port 3000. The frontend proxies
+browser `/api/*` requests to `http://localhost:8083/api`: its current default
+branch strips the `/api` prefix, so the upstream base URL restores it. The
+browser uses one origin and needs no separate API URL or CORS configuration.
+
 The API preview uses port 8083; `/health` and `/api/health` report dependency
-readiness. This repository has no browser UI or application login. Local storage
+readiness. The backend has no browser UI; the paired frontend has no application login. Local storage
 credentials and the signing key are development-only values, stable across
 restarts. Email sharing remains disabled unless `MAIL_API_KEY` is configured:
 add a secret reference for it to the stack service's environment. Compose already

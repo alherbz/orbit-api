@@ -1,1 +1,3 @@
 version: 1
+additionalRepositories:
+  - repository: alherbz/orbit-web
