@@ -31,8 +31,12 @@ env:
     from: minio
     part: tenant
   - name: S3_ACCESS_KEY_ID
+    from: minio
+    part: access_key
     secret: true
   - name: S3_SECRET_ACCESS_KEY
+    from: minio
+    part: secret_key
     secret: true
   - name: ORBIT_SIGNING_SECRET
     generate: key
