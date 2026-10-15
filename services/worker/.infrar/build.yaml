@@ -1,0 +1,24 @@
+schema_version: 1
+dockerfile: Dockerfile
+requires:
+  postgres:
+    product: postgres
+    version: "16"
+    tenant: orbit
+    env:
+      DATABASE_URL: url
+  redis:
+    product: redis
+    version: "7"
+    tenant: orbit
+    env:
+      REDIS_URL: url
+env:
+  #evidence: compose — docker-compose.yml, DATABASE_URL calls postgres.
+  - name: DATABASE_URL
+    from: postgres
+    part: url
+  #evidence: compose — docker-compose.yml, REDIS_URL calls redis.
+  - name: REDIS_URL
+    from: redis
+    part: url

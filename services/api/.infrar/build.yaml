@@ -1,0 +1,49 @@
+schema_version: 1
+dockerfile: Dockerfile
+run:
+  api_prefix: /api
+requires:
+  minio:
+    product: s3
+    env:
+      S3_REGION: region
+  postgres:
+    product: postgres
+    version: "16"
+    env:
+      DATABASE_URL: url
+  redis:
+    product: redis
+    version: "7"
+#Not a requirement: `resend` (resend). `resend` is not a product Infrar can run and the entry states no image and port: the platform a node runs on (the cluster whose API it calls, a container runtime, the host) is not a dependency, and nothing is realised for it.
+env:
+  #evidence: compose — docker-compose.yml, DATABASE_URL calls postgres.
+  - name: DATABASE_URL
+    from: postgres
+    part: url
+  #evidence: compose — docker-compose.yml, REDIS_URL calls redis.
+  - name: REDIS_URL
+    from: redis
+    part: url
+  - name: S3_ENDPOINT
+    from: minio
+  - name: S3_BUCKET
+    from: minio
+    part: tenant
+  - name: S3_ACCESS_KEY_ID
+    secret: true
+  - name: S3_SECRET_ACCESS_KEY
+    secret: true
+  - name: ORBIT_SIGNING_SECRET
+    generate: key
+  - name: MAIL_API_KEY
+    secret: true
+  - name: MAIL_FROM
+    default: orbit@example.com
+  - name: PORT
+    default: "8083"
+bootstrap:
+  - name: Apply API database migrations
+    command:
+      - node
+      - src/migrate.js
